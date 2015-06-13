@@ -19,8 +19,8 @@
 #ifndef __MESOS_EXECUTOR_HPP__
 #define __MESOS_EXECUTOR_HPP__
 
-#include <pthread.h>
-
+#include <condition_variable>
+#include <mutex>
 #include <string>
 
 #include <mesos/mesos.hpp>
@@ -237,10 +237,10 @@ private:
   internal::ExecutorProcess* process;
 
   // Mutex to enforce all non-callbacks are execute serially.
-  pthread_mutex_t mutex;
+  std::recursive_mutex mutex;
 
   // Condition variable for waiting until driver terminates.
-  pthread_cond_t cond;
+  std::condition_variable_any cond;
 
   // Current status of the driver.
   Status status;

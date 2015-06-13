@@ -20,7 +20,9 @@
 
 #include <sys/types.h>
 
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <sstream>
 
@@ -43,9 +45,9 @@
 #include <stout/os.hpp>
 #include <stout/stopwatch.hpp>
 #include <stout/stringify.hpp>
+#include <stout/synchronized.hpp>
 #include <stout/uuid.hpp>
 
-#include "common/lock.hpp"
 #include "common/protobuf_utils.hpp"
 
 #include "logging/flags.hpp"
@@ -110,8 +112,8 @@ public:
                   const string& _directory,
                   bool _checkpoint,
                   Duration _recoveryTimeout,
-                  pthread_mutex_t* _mutex,
-                  pthread_cond_t* _cond)
+                  std::recursive_mutex* _mutex,
+                  std::condition_variable_any* _cond)
     : ProcessBase(ID::generate("executor")),
       slave(_slave),
       driver(_driver),
@@ -404,8 +406,9 @@ protected:
   {
     terminate(self());
 
-    Lock lock(mutex);
-    pthread_cond_signal(cond);
+    synchronized (mutex) {
+      cond->notify_one();
+    }
   }
 
   void abort()
@@ -413,8 +416,9 @@ protected:
     LOG(INFO) << "Deactivating the executor libprocess";
     CHECK(aborted);
 
-    Lock lock(mutex);
-    pthread_cond_signal(cond);
+    synchronized (mutex) {
+      cond->notify_one();
+    }
   }
 
   void _recoveryTimeout(UUID _connection)
@@ -535,8 +539,8 @@ private:
   UUID connection; // UUID to identify the connection instance.
   bool local;
   volatile bool aborted;
-  pthread_mutex_t* mutex;
-  pthread_cond_t* cond;
+  std::recursive_mutex* mutex;
+  std::condition_variable_any* cond;
   const string directory;
   bool checkpoint;
   Duration recoveryTimeout;
@@ -575,14 +579,6 @@ MesosExecutorDriver::MesosExecutorDriver(Executor* _executor)
     return;
   }
 
-  // Create mutex and condition variable.
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&mutex, &attr);
-  pthread_mutexattr_destroy(&attr);
-  pthread_cond_init(&cond, 0);
-
   // Initialize libprocess.
   process::initialize();
 
@@ -603,181 +599,181 @@ MesosExecutorDriver::~MesosExecutorDriver()
   terminate(process);
   wait(process);
   delete process;
-
-  pthread_mutex_destroy(&mutex);
-  pthread_cond_destroy(&cond);
 }
 
 
 Status MesosExecutorDriver::start()
 {
-  Lock lock(&mutex);
-
-  if (status != DRIVER_NOT_STARTED) {
-    return status;
-  }
-
-  // Set stream buffering mode to flush on newlines so that we capture logs
-  // from user processes even when output is redirected to a file.
-  setvbuf(stdout, 0, _IOLBF, 0);
-  setvbuf(stderr, 0, _IOLBF, 0);
-
-  bool local;
-
-  UPID slave;
-  SlaveID slaveId;
-  FrameworkID frameworkId;
-  ExecutorID executorId;
-  string workDirectory;
-  bool checkpoint;
-
-  Option<string> value;
-  std::istringstream iss;
-
-  // Check if this is local (for example, for testing).
-  local = os::getenv("MESOS_LOCAL").isSome();
-
-  // Get slave PID from environment.
-  value = os::getenv("MESOS_SLAVE_PID");
-  if (value.isNone()) {
-    EXIT(1) << "Expecting 'MESOS_SLAVE_PID' to be set in the environment.";
-  }
-
-  slave = UPID(value.get());
-  CHECK(slave) << "Cannot parse MESOS_SLAVE_PID '" << value.get() << "'";
-
-  // Get slave ID from environment.
-  value = os::getenv("MESOS_SLAVE_ID");
-  if (value.isNone()) {
-    EXIT(1) << "Expecting 'MESOS_SLAVE_ID' to be set in the environment.";
-  }
-  slaveId.set_value(value.get());
-
-  // Get framework ID from environment.
-  value = os::getenv("MESOS_FRAMEWORK_ID");
-  if (value.isNone()) {
-    EXIT(1) << "Expecting 'MESOS_FRAMEWORK_ID' to be set in the environment.";
-  }
-  frameworkId.set_value(value.get());
-
-  // Get executor ID from environment.
-  value = os::getenv("MESOS_EXECUTOR_ID");
-  if (value.isNone()) {
-    EXIT(1) << "Expecting 'MESOS_EXECUTOR_ID' to be set in the environment.";
-  }
-  executorId.set_value(value.get());
-
-  // Get working directory from environment.
-  value = os::getenv("MESOS_DIRECTORY");
-  if (value.isNone()) {
-    EXIT(1) << "Expecting 'MESOS_DIRECTORY' to be set in the environment.";
-  }
-  workDirectory = value.get();
-
-  // Get checkpointing status from environment.
-  value = os::getenv("MESOS_CHECKPOINT");
-  checkpoint = value.isSome() && value.get() == "1";
-
-  Duration recoveryTimeout = slave::RECOVERY_TIMEOUT;
-
-  // Get the recovery timeout if checkpointing is enabled.
-  if (checkpoint) {
-    value = os::getenv("MESOS_RECOVERY_TIMEOUT");
-
-    if (value.isSome()) {
-      Try<Duration> _recoveryTimeout = Duration::parse(value.get());
-
-      CHECK_SOME(_recoveryTimeout)
-          << "Cannot parse MESOS_RECOVERY_TIMEOUT '" << value.get() << "': "
-          << _recoveryTimeout.error();
-
-      recoveryTimeout = _recoveryTimeout.get();
+  synchronized (mutex) {
+    if (status != DRIVER_NOT_STARTED) {
+      return status;
     }
+
+    // Set stream buffering mode to flush on newlines so that we
+    // capture logs from user processes even when output is redirected
+    // to a file.
+    setvbuf(stdout, 0, _IOLBF, 0);
+    setvbuf(stderr, 0, _IOLBF, 0);
+
+    bool local;
+
+    UPID slave;
+    SlaveID slaveId;
+    FrameworkID frameworkId;
+    ExecutorID executorId;
+    string workDirectory;
+    bool checkpoint;
+
+    Option<string> value;
+    std::istringstream iss;
+
+    // Check if this is local (for example, for testing).
+    local = os::getenv("MESOS_LOCAL").isSome();
+
+    // Get slave PID from environment.
+    value = os::getenv("MESOS_SLAVE_PID");
+    if (value.isNone()) {
+      EXIT(1) << "Expecting 'MESOS_SLAVE_PID' to be set in the environment.";
+    }
+
+    slave = UPID(value.get());
+    CHECK(slave) << "Cannot parse MESOS_SLAVE_PID '" << value.get() << "'";
+
+    // Get slave ID from environment.
+    value = os::getenv("MESOS_SLAVE_ID");
+    if (value.isNone()) {
+      EXIT(1) << "Expecting 'MESOS_SLAVE_ID' to be set in the environment.";
+    }
+    slaveId.set_value(value.get());
+
+    // Get framework ID from environment.
+    value = os::getenv("MESOS_FRAMEWORK_ID");
+    if (value.isNone()) {
+      EXIT(1) << "Expecting 'MESOS_FRAMEWORK_ID' to be set in the environment.";
+    }
+    frameworkId.set_value(value.get());
+
+    // Get executor ID from environment.
+    value = os::getenv("MESOS_EXECUTOR_ID");
+    if (value.isNone()) {
+      EXIT(1) << "Expecting 'MESOS_EXECUTOR_ID' to be set in the environment.";
+    }
+    executorId.set_value(value.get());
+
+    // Get working directory from environment.
+    value = os::getenv("MESOS_DIRECTORY");
+    if (value.isNone()) {
+      EXIT(1) << "Expecting 'MESOS_DIRECTORY' to be set in the environment.";
+    }
+    workDirectory = value.get();
+
+    // Get checkpointing status from environment.
+    value = os::getenv("MESOS_CHECKPOINT");
+    checkpoint = value.isSome() && value.get() == "1";
+
+    Duration recoveryTimeout = slave::RECOVERY_TIMEOUT;
+
+    // Get the recovery timeout if checkpointing is enabled.
+    if (checkpoint) {
+      value = os::getenv("MESOS_RECOVERY_TIMEOUT");
+
+      if (value.isSome()) {
+        Try<Duration> _recoveryTimeout = Duration::parse(value.get());
+
+        CHECK_SOME(_recoveryTimeout)
+            << "Cannot parse MESOS_RECOVERY_TIMEOUT '" << value.get() << "': "
+            << _recoveryTimeout.error();
+
+        recoveryTimeout = _recoveryTimeout.get();
+      }
+    }
+
+    CHECK(process == NULL);
+
+    process = new ExecutorProcess(
+        slave,
+        this,
+        executor,
+        slaveId,
+        frameworkId,
+        executorId,
+        local,
+        workDirectory,
+        checkpoint,
+        recoveryTimeout,
+        &mutex,
+        &cond);
+
+    spawn(process);
+
+    return status = DRIVER_RUNNING;
   }
-
-  CHECK(process == NULL);
-
-  process = new ExecutorProcess(
-      slave,
-      this,
-      executor,
-      slaveId,
-      frameworkId,
-      executorId,
-      local,
-      workDirectory,
-      checkpoint,
-      recoveryTimeout,
-      &mutex,
-      &cond);
-
-  spawn(process);
-
-  return status = DRIVER_RUNNING;
 }
 
 
 Status MesosExecutorDriver::stop()
 {
-  Lock lock(&mutex);
+  synchronized (mutex) {
+    if (status != DRIVER_RUNNING && status != DRIVER_ABORTED) {
+      return status;
+    }
 
-  if (status != DRIVER_RUNNING && status != DRIVER_ABORTED) {
-    return status;
+    CHECK(process != NULL);
+
+    dispatch(process, &ExecutorProcess::stop);
+
+    bool aborted = status == DRIVER_ABORTED;
+
+    status = DRIVER_STOPPED;
+
+    return aborted ? DRIVER_ABORTED : status;
   }
-
-  CHECK(process != NULL);
-
-  dispatch(process, &ExecutorProcess::stop);
-
-  bool aborted = status == DRIVER_ABORTED;
-
-  status = DRIVER_STOPPED;
-
-  return aborted ? DRIVER_ABORTED : status;
 }
 
 
 Status MesosExecutorDriver::abort()
 {
-  Lock lock(&mutex);
+  synchronized (mutex) {
+    if (status != DRIVER_RUNNING) {
+      return status;
+    }
 
-  if (status != DRIVER_RUNNING) {
-    return status;
+    CHECK(process != NULL);
+
+    // We set the volatile aborted to true here to prevent any further
+    // messages from being processed in the ExecutorProcess. However,
+    // if abort() is called from another thread as the ExecutorProcess,
+    // there may be at most one additional message processed.
+    // TODO(bmahler): Use an atomic boolean.
+    process->aborted = true;
+
+    // Dispatching here ensures that we still process the outstanding
+    // requests *from* the executor, since those do proceed when
+    // aborted is true.
+    dispatch(process, &ExecutorProcess::abort);
+
+    return status = DRIVER_ABORTED;
   }
-
-  CHECK(process != NULL);
-
-  // We set the volatile aborted to true here to prevent any further
-  // messages from being processed in the ExecutorProcess. However,
-  // if abort() is called from another thread as the ExecutorProcess,
-  // there may be at most one additional message processed.
-  // TODO(bmahler): Use an atomic boolean.
-  process->aborted = true;
-
-  // Dispatching here ensures that we still process the outstanding
-  // requests *from* the executor, since those do proceed when
-  // aborted is true.
-  dispatch(process, &ExecutorProcess::abort);
-
-  return status = DRIVER_ABORTED;
 }
 
 
 Status MesosExecutorDriver::join()
 {
-  Lock lock(&mutex);
+  synchronized (mutex) {
+    if (status != DRIVER_RUNNING) {
+      return status;
+    }
 
-  if (status != DRIVER_RUNNING) {
+    while (status == DRIVER_RUNNING) {
+      std::unique_lock<std::recursive_mutex> lock(mutex, std::adopt_lock);
+      cond.wait(lock);
+      lock.release();
+    }
+
+    CHECK(status == DRIVER_ABORTED || status == DRIVER_STOPPED);
+
     return status;
   }
-
-  while (status == DRIVER_RUNNING) {
-    pthread_cond_wait(&cond, &mutex);
-  }
-
-  CHECK(status == DRIVER_ABORTED || status == DRIVER_STOPPED);
-
-  return status;
 }
 
 
@@ -790,31 +786,31 @@ Status MesosExecutorDriver::run()
 
 Status MesosExecutorDriver::sendStatusUpdate(const TaskStatus& taskStatus)
 {
-  Lock lock(&mutex);
+  synchronized (mutex) {
+    if (status != DRIVER_RUNNING) {
+      return status;
+    }
 
-  if (status != DRIVER_RUNNING) {
+    CHECK(process != NULL);
+
+    dispatch(process, &ExecutorProcess::sendStatusUpdate, taskStatus);
+
     return status;
   }
-
-  CHECK(process != NULL);
-
-  dispatch(process, &ExecutorProcess::sendStatusUpdate, taskStatus);
-
-  return status;
 }
 
 
 Status MesosExecutorDriver::sendFrameworkMessage(const string& data)
 {
-  Lock lock(&mutex);
+  synchronized (mutex) {
+    if (status != DRIVER_RUNNING) {
+      return status;
+    }
 
-  if (status != DRIVER_RUNNING) {
+    CHECK(process != NULL);
+
+    dispatch(process, &ExecutorProcess::sendFrameworkMessage, data);
+
     return status;
   }
-
-  CHECK(process != NULL);
-
-  dispatch(process, &ExecutorProcess::sendFrameworkMessage, data);
-
-  return status;
 }
