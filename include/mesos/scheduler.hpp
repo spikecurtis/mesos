@@ -22,8 +22,8 @@
 #include <functional>
 #include <queue>
 
-#include <pthread.h>
-
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -447,10 +447,10 @@ private:
   std::string url;
 
   // Mutex to enforce all non-callbacks are executed serially.
-  pthread_mutex_t mutex;
+  std::recursive_mutex mutex;
 
   // Condition variable for waiting until driver terminates.
-  pthread_cond_t cond;
+  std::condition_variable_any cond;
 
   // Current status of the driver.
   Status status;
