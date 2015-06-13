@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 
 #include <list>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -33,8 +34,7 @@
 #include <stout/lambda.hpp>
 #include <stout/path.hpp>
 #include <stout/os.hpp>
-
-#include "common/lock.hpp"
+#include <stout/synchronized.hpp>
 
 #include "logging/logging.hpp"
 
@@ -97,33 +97,16 @@ void ZooKeeperTest::SetUp()
 }
 
 
-ZooKeeperTest::TestWatcher::TestWatcher()
-{
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
-  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-  pthread_mutex_init(&mutex, &attr);
-  pthread_mutexattr_destroy(&attr);
-  pthread_cond_init(&cond, 0);
-}
-
-
-ZooKeeperTest::TestWatcher::~TestWatcher()
-{
-  pthread_mutex_destroy(&mutex);
-  pthread_cond_destroy(&cond);
-}
-
-
 void ZooKeeperTest::TestWatcher::process(
     int type,
     int state,
     int64_t sessionId,
     const string& path)
 {
-  Lock lock(&mutex);
-  events.push(Event(type, state, path));
-  pthread_cond_signal(&cond);
+  synchronized (mutex) {
+    events.push(Event(type, state, path));
+    cond.notify_one();
+  }
 }
 
 
@@ -158,14 +141,17 @@ void ZooKeeperTest::TestWatcher::awaitCreated(const string& path)
 ZooKeeperTest::TestWatcher::Event
 ZooKeeperTest::TestWatcher::awaitEvent()
 {
-  Lock lock(&mutex);
-  while (true) {
-    while (events.empty()) {
-      pthread_cond_wait(&cond, &mutex);
+  synchronized (mutex) {
+    while (true) {
+      while (events.empty()) {
+        std::unique_lock<std::mutex> lock(mutex, std::adopt_lock);
+        cond.wait(lock);
+        lock.release();
+      }
+      Event event = events.front();
+      events.pop();
+      return event;
     }
-    Event event = events.front();
-    events.pop();
-    return event;
   }
 }
 

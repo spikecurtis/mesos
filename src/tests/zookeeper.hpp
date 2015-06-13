@@ -19,11 +19,12 @@
 #ifndef __TESTS_ZOOKEEPER_HPP__
 #define __TESTS_ZOOKEEPER_HPP__
 
-#include <pthread.h>
 #include <stdint.h>
 
 #include <gtest/gtest.h>
 
+#include <condition_variable>
+#include <mutex>
 #include <queue>
 
 #include <stout/duration.hpp>
@@ -87,8 +88,8 @@ public:
       const std::string path;
     };
 
-    TestWatcher();
-    virtual ~TestWatcher();
+    TestWatcher() {}
+    virtual ~TestWatcher() {}
 
     virtual void process(
         int type,
@@ -110,8 +111,8 @@ public:
 
   private:
     std::queue<Event> events;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
+    std::mutex mutex;
+    std::condition_variable cond;
   };
 
   static void SetUpTestCase();
