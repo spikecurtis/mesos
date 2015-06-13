@@ -1,9 +1,13 @@
 #ifndef __PROCESS_ONCE_HPP__
 #define __PROCESS_ONCE_HPP__
 
+#include <condition_variable>
+#include <mutex>
+
 #include <process/future.hpp>
 
 #include <stout/nothing.hpp>
+#include <stout/synchronized.hpp>
 
 namespace process {
 
@@ -12,17 +16,9 @@ namespace process {
 class Once
 {
 public:
-  Once() : started(false), finished(false)
-  {
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond, NULL);
-  }
+  Once() : started(false), finished(false) {}
 
-  ~Once()
-  {
-    pthread_cond_destroy(&cond);
-    pthread_mutex_destroy(&mutex);
-  }
+  ~Once() = default;
 
   // Returns true if this Once instance has already transitioned to a
   // 'done' state (i.e., the action you wanted to perform "once" has
@@ -32,18 +28,18 @@ public:
   {
     bool result = false;
 
-    pthread_mutex_lock(&mutex);
-    {
+    synchronized (mutex) {
       if (started) {
         while (!finished) {
-          pthread_cond_wait(&cond, &mutex);
+          std::unique_lock<std::mutex> lock(mutex, std::adopt_lock);
+          cond.wait(lock);
+          lock.release();
         }
         result = true;
       } else {
         started = true;
       }
     }
-    pthread_mutex_unlock(&mutex);
 
     return result;
   }
@@ -51,14 +47,12 @@ public:
   // Transitions this Once instance to a 'done' state.
   void done()
   {
-    pthread_mutex_lock(&mutex);
-    {
+    synchronized (mutex) {
       if (started && !finished) {
         finished = true;
-        pthread_cond_broadcast(&cond);
+        cond.notify_all();
       }
     }
-    pthread_mutex_unlock(&mutex);
   }
 
 private:
@@ -66,8 +60,8 @@ private:
   Once(const Once& that);
   Once& operator = (const Once& that);
 
-  pthread_mutex_t mutex;
-  pthread_cond_t cond;
+  std::mutex mutex;
+  std::condition_variable cond;
   bool started;
   bool finished;
 };
