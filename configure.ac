@@ -519,6 +519,13 @@ AM_CONDITIONAL([WITH_BUNDLED_PROTOBUF],
 AC_SUBST([PROTOBUF_JAR])
 AC_SUBST([PROTOCOMPILER])
 
+# Check for pthreads (uses m4/ax_pthread.m4).
+AX_PTHREAD([], [AC_MSG_ERROR([failed to find pthreads])])
+
+LIBS="$PTHREAD_LIBS $LIBS"
+CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
+CC="$PTHREAD_CC"
+
 AS_CASE($ax_cv_cxx_compiler_vendor,
   [clang], [
     # Check if -Wno-unused-local-typedef is needed by checking a sample
@@ -567,6 +574,42 @@ AS_CASE($ax_cv_cxx_compiler_vendor,
       *-O2*) CXXFLAGS="${CXXFLAGS} -Wno-maybe-uninitialized" ;;
       *) ;;
     esac
+
+    # The version of GCC 4.8.2 that shipped with devtoolset-2 has a broken version
+    # of 'std::condition_variable_any'. The following trivial test case throws an
+    # exception with the broken version, runs successfully otherwise.
+    # Refer to 'https://rhn.redhat.com/errata/RHBA-2014-1035.html'.
+    AC_DEFINE([_GLIBCXX_DTS2_CONDITION_VARIABLE_ANY])
+
+    AC_LANG_PUSH([C++])
+    AC_RUN_IFELSE(
+    [AC_LANG_SOURCE([[
+      #include <condition_variable>
+      #include <thread>
+
+      int main() {
+        std::thread t([]() {
+          std::condition_variable_any cv;
+          cv.notify_one();
+        });
+        t.join();
+      }
+    ]])],
+    [COND_VAR_ANY=yes], [COND_VAR_ANY=no])
+    AC_LANG_POP([C++])
+
+    if test "x$COND_VAR_ANY" = "xno"; then
+      AC_MSG_ERROR(['std::condition_variable_any' is broken!
+-------------------------------------------------------------------
+If you're on CentOS 6 with 'devltoolset-2', you probably don't have
+the bug fix patch for 'devtoolset-2-gcc-c++'. Please refer to the
+'Getting Started' guide to find instructions for CentOS 6.
+
+For further details, refer to
+'https://rhn.redhat.com/errata/RHBA-2014-1035.html'.
+-------------------------------------------------------------------
+    ])
+    fi
   ], [
     AC_MSG_WARN([$ax_cv_cxx_compiler_vendor is an unsupported compiler])
   ]
@@ -629,10 +672,6 @@ esac
 
 # Also pass the flags to 3rdparty libraries.
 CONFIGURE_ARGS="$CONFIGURE_ARGS CXXFLAGS='$CXXFLAGS'"
-
-
-# Check for pthreads (uses m4/ax_pthread.m4).
-AX_PTHREAD([], [AC_MSG_ERROR([failed to find pthreads])])
 
 
 # Check for libunwind, and link it in if present.

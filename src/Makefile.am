@@ -84,10 +84,6 @@ if OS_LINUX
 AM_LDFLAGS=-Wl,--as-needed
 endif
 
-# Add compiler and linker flags for pthreads.
-AM_CXXFLAGS = $(PTHREAD_CFLAGS)
-AM_LIBS = $(PTHREAD_LIBS)
-
 # Setup CPPFLAGS that are used for most source files.
 MESOS_CPPFLAGS = $(AM_CPPFLAGS)
 MESOS_CPPFLAGS += -Wall -Werror
