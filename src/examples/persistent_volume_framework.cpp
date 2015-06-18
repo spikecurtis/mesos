@@ -224,10 +224,6 @@ public:
           case Shard::DONE:
             // Ignore the offer.
             break;
-          default:
-            LOG(ERROR) << "Unexpected shard state: " << shard.state;
-            driver->abort();
-            break;
         }
       }
 
@@ -266,7 +262,10 @@ public:
           case TASK_STARTING:
             // Ignore the status update.
             break;
-          default:
+          case TASK_ERROR:
+          case TASK_FAILED:
+          case TASK_KILLED:
+          case TASK_LOST:
             LOG(ERROR) << "Unexpected task state " << status.state()
                        << " for task '" << status.task_id() << "'";
             driver->abort();

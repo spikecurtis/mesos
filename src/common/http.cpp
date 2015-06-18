@@ -72,7 +72,7 @@ JSON::Object model(const Resources& resources)
         object.values[name] =
           stringify(nonRevocable.get<Value::Set>(name).get());
         break;
-      default:
+      case Value::TEXT:
         LOG(FATAL) << "Unexpected Value type: " << type;
     }
   }
@@ -98,9 +98,6 @@ JSON::Object model(const Attributes& attributes)
         break;
       case Value::TEXT:
         object.values[attribute.name()] = attribute.text().value();
-        break;
-      default:
-        LOG(FATAL) << "Unexpected Value type: " << attribute.type();
         break;
     }
   }

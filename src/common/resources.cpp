@@ -857,9 +857,6 @@ Try<Resources> Resources::apply(const Offer::Operation& operation) const
       }
       break;
     }
-
-    default:
-      return Error("Unknown offer operation " + stringify(operation.type()));
   }
 
   // This is a sanity check to ensure the amount of each type of
@@ -1170,9 +1167,6 @@ ostream& operator << (ostream& stream, const Volume& volume) {
       switch (volume.mode()) {
         case Volume::RW: volumeConfig += ":rw"; break;
         case Volume::RO: volumeConfig += ":ro"; break;
-        default:
-          LOG(FATAL) << "Unknown Volume mode: " << volume.mode();
-          break;
       }
     }
   }
@@ -1224,7 +1218,7 @@ ostream& operator << (ostream& stream, const Resource& resource)
     case Value::SCALAR: stream << resource.scalar(); break;
     case Value::RANGES: stream << resource.ranges(); break;
     case Value::SET:    stream << resource.set();    break;
-    default:
+    case Value::TEXT:
       LOG(FATAL) << "Unexpected Value type: " << resource.type();
       break;
   }

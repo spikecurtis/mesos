@@ -286,7 +286,8 @@ private:
             return result;
           }
           break;
-        default:
+        case Metadata::VOTING:
+        case Metadata::RECOVERING:
           // Ignore all other cases.
           break;
       }
@@ -509,7 +510,7 @@ private:
         return updateReplicaStatus(Metadata::RECOVERING)
           .then(defer(self(), &Self::catchup, result.begin(), result.end()));
 
-      default:
+      case Metadata::EMPTY:
         return Failure("Unexpected status returned from the recover protocol");
     }
   }

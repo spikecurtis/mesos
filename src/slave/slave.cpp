@@ -3378,6 +3378,7 @@ void Slave::executorTerminated(
       }
       break;
     }
+    case Executor::TERMINATED:
     default:
       LOG(FATAL) << "Executor '" << executor->id
                  << "' of framework " << framework->id()
@@ -3673,6 +3674,8 @@ void Slave::shutdownExecutorTimeout(
 
       containerizer->destroy(executor->containerId);
       break;
+    case Executor::REGISTERING:
+    case Executor::RUNNING:
     default:
       LOG(FATAL) << "Executor '" << executor->id
                  << "' of framework " << framework->id()
@@ -4987,6 +4990,10 @@ void Executor::terminateTask(
     case TASK_LOST:
       ++slave->metrics.tasks_lost;
       break;
+    case TASK_STARTING:
+    case TASK_RUNNING:
+    case TASK_STAGING:
+    case TASK_ERROR:
     default:
       LOG(WARNING) << "Unhandled task state " << status.state()
                    << " on completion.";

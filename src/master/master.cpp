@@ -1611,14 +1611,16 @@ void Master::receive(
 
   // For SUBSCRIBE call, no need to look up the framework. Therefore,
   // we handle them first and separately from other types of calls.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
   switch (call.type()) {
     case scheduler::Call::SUBSCRIBE:
       drop(from, call, "Unimplemented");
       return;
-
     default:
       break;
   }
+#pragma GCC diagnostic pop
 
   // We consolidate the framework lookup and pid validation logic here
   // because they are common for all the call handlers.
@@ -1683,8 +1685,8 @@ void Master::receive(
       removeFramework(framework);
       break;
 
-    default:
-      drop(from, call, "Unknown call type");
+    case scheduler::Call::SUBSCRIBE:
+      UNREACHABLE();
       break;
   }
 }
@@ -2771,10 +2773,6 @@ void Master::_accept(
         }
         break;
       }
-
-      default:
-        LOG(ERROR) << "Unsupported offer operation " << operation.type();
-        break;
     }
   }
 
@@ -5004,7 +5002,10 @@ void Master::updateTask(Task* task, const StatusUpdate& update)
       case TASK_KILLED:   ++metrics->tasks_killed;   break;
       case TASK_LOST:     ++metrics->tasks_lost;     break;
       case TASK_ERROR:    ++metrics->tasks_error;    break;
-      default:                                       break;
+      case TASK_STARTING:
+      case TASK_RUNNING:
+      case TASK_STAGING:
+        break;
     }
 
     if (status.has_reason()) {
