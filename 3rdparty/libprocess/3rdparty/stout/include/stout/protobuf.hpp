@@ -320,6 +320,8 @@ struct Parser : boost::static_visitor<Try<Nothing> >
 
   Try<Nothing> operator () (const JSON::Object& object) const
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (field->type()) {
       case google::protobuf::FieldDescriptor::TYPE_MESSAGE:
         if (field->is_repeated()) {
@@ -332,11 +334,14 @@ struct Parser : boost::static_visitor<Try<Nothing> >
         return Error("Not expecting a JSON object for field '" +
                      field->name() + "'");
     }
+#pragma GCC diagnostic pop
     return Nothing();
   }
 
   Try<Nothing> operator () (const JSON::String& string) const
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (field->type()) {
       case google::protobuf::FieldDescriptor::TYPE_STRING:
       case google::protobuf::FieldDescriptor::TYPE_BYTES:
@@ -365,11 +370,14 @@ struct Parser : boost::static_visitor<Try<Nothing> >
         return Error("Not expecting a JSON string for field '" +
                      field->name() + "'");
     }
+#pragma GCC diagnostic pop
     return Nothing();
   }
 
   Try<Nothing> operator () (const JSON::Number& number) const
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (field->type()) {
       case google::protobuf::FieldDescriptor::TYPE_DOUBLE:
         if (field->is_repeated()) {
@@ -453,6 +461,7 @@ struct Parser : boost::static_visitor<Try<Nothing> >
         return Error("Not expecting a JSON number for field '" +
                      field->name() + "'");
     }
+#pragma GCC diagnostic pop
     return Nothing();
   }
 
@@ -477,6 +486,8 @@ struct Parser : boost::static_visitor<Try<Nothing> >
 
   Try<Nothing> operator () (const JSON::Boolean& boolean) const
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (field->type()) {
       case google::protobuf::FieldDescriptor::TYPE_BOOL:
         if (field->is_repeated()) {
@@ -489,6 +500,7 @@ struct Parser : boost::static_visitor<Try<Nothing> >
         return Error("Not expecting a JSON boolean for field '" +
                      field->name() + "'");
     }
+#pragma GCC diagnostic pop
     return Nothing();
   }
 
