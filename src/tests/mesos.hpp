@@ -1035,6 +1035,12 @@ ACTION_P(InvokeUpdateAllocation, allocator)
 }
 
 
+ACTION_P(InvokeUpdateResources, allocator)
+{
+  return allocator->real->updateAvailable(arg0, arg1);
+}
+
+
 ACTION_P(InvokeRecoverResources, allocator)
 {
   allocator->real->recoverResources(arg0, arg1, arg2, arg3);
@@ -1153,6 +1159,11 @@ public:
     EXPECT_CALL(*this, updateAllocation(_, _, _))
       .WillRepeatedly(DoDefault());
 
+    ON_CALL(*this, updateAvailable(_, _))
+      .WillByDefault(InvokeUpdateResources(this));
+    EXPECT_CALL(*this, updateAvailable(_, _))
+      .WillRepeatedly(DoDefault());
+
     ON_CALL(*this, recoverResources(_, _, _, _))
       .WillByDefault(InvokeRecoverResources(this));
     EXPECT_CALL(*this, recoverResources(_, _, _, _))
@@ -1219,6 +1230,10 @@ public:
 
   MOCK_METHOD3(updateAllocation, void(
       const FrameworkID&,
+      const SlaveID&,
+      const std::vector<Offer::Operation>&));
+
+  MOCK_METHOD2(updateAvailable, process::Future<Nothing>(
       const SlaveID&,
       const std::vector<Offer::Operation>&));
 
