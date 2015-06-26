@@ -437,6 +437,21 @@ struct NotFound : Response
 };
 
 
+struct Conflict : Response
+{
+  Conflict()
+  {
+    status = "409 Conflict";
+  }
+
+  explicit Conflict(const std::string& body)
+    : Response(body)
+  {
+    status = "409 Conflict";
+  }
+};
+
+
 struct InternalServerError : Response
 {
   InternalServerError()
