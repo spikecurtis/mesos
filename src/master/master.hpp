@@ -1089,6 +1089,10 @@ private:
     process::Future<process::http::Response> tasks(
         const process::http::Request& request) const;
 
+    // /master/unreserve
+    process::Future<process::http::Response> unreserve(
+        const process::http::Request& request) const;
+
     const static std::string HEALTH_HELP;
     const static std::string OBSERVE_HELP;
     const static std::string REDIRECT_HELP;
