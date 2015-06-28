@@ -41,6 +41,7 @@
 #include <stout/os.hpp>
 #include <stout/result.hpp>
 #include <stout/strings.hpp>
+#include <stout/utils.hpp>
 
 #include "authorizer/authorizer.hpp"
 
@@ -52,6 +53,7 @@
 #include "logging/logging.hpp"
 
 #include "master/master.hpp"
+#include "master/validation.hpp"
 
 #include "mesos/mesos.hpp"
 #include "mesos/resources.hpp"
@@ -64,6 +66,7 @@ using process::TLDR;
 using process::USAGE;
 
 using process::http::BadRequest;
+using process::http::Conflict;
 using process::http::InternalServerError;
 using process::http::NotFound;
 using process::http::OK;
@@ -438,6 +441,108 @@ Future<Response> Master::Http::redirect(const Request& request) const
 
   return TemporaryRedirect(
       "http://" + hostname.get() + ":" + stringify(info.port()));
+}
+
+
+Future<Response> Master::Http::reserve(const Request& request) const
+{
+  if (request.method != "POST") {
+    return BadRequest("Expecting POST");
+  }
+
+  // Parse the query string in the request body.
+  Try<hashmap<string, string>> decode =
+    process::http::query::decode(request.body);
+
+  if (decode.isError()) {
+    return BadRequest("Unable to decode query string: " + decode.error());
+  }
+
+  const hashmap<string, string>& values = decode.get();
+
+  if (values.get("slaveId").isNone()) {
+    return BadRequest("Missing 'slaveId' query parameter");
+  }
+
+  SlaveID slaveId;
+  slaveId.set_value(values.get("slaveId").get());
+
+  Slave* slave = master->slaves.registered.get(slaveId);
+  if (slave == NULL) {
+    return BadRequest("No slave found with specified ID");
+  }
+
+  if (values.get("resources").isNone()) {
+    return BadRequest("Missing 'resources' query parameter");
+  }
+
+  Try<JSON::Array> parse =
+    JSON::parse<JSON::Array>(values.get("resources").get());
+
+  if (parse.isError()) {
+    return BadRequest(
+        "Error in parsing 'resources' query parameter: " + parse.error());
+  }
+
+  const JSON::Array& array = parse.get();
+
+  Resources resources;
+  foreach (const JSON::Value& value, array.values) {
+    Try<Resource> resource = ::protobuf::parse<Resource>(value);
+    if (resource.isError()) {
+      return BadRequest(
+          "Error in parsing 'resources' query parameter: " + resource.error());
+    }
+    resources += resource.get();
+  }
+
+  Result<Credential> credential = authenticate(request);
+
+  if (credential.isError()) {
+    return Unauthorized("Mesos master", credential.error());
+  }
+
+  // TODO(mpark): Add a reserve ACL for authorization.
+
+  // Create an offer operation.
+  Offer::Operation operation;
+  operation.set_type(Offer::Operation::RESERVE);
+  operation.mutable_reserve()->mutable_resources()->CopyFrom(resources);
+
+  Option<string> principal =
+    credential.isSome() ? credential.get().principal() : Option<string>::none();
+
+  Option<Error> validate =
+    validation::operation::validate(operation.reserve(), None(), principal);
+
+  if (validate.isSome()) {
+    return BadRequest("Invalid RESERVE operation: " + validate.get().message);
+  }
+
+  Resources recovered;
+
+  foreach (Offer* offer, utils::copy(slave->offers)) {
+    master->allocator->recoverResources(
+        offer->framework_id(),
+        offer->slave_id(),
+        offer->resources(),
+        Filters());
+
+    recovered += offer->resources();
+
+    master->removeOffer(offer, true); // Rescind!
+
+    Try<Resources> updatedRecovered = recovered.apply(operation);
+    if (updatedRecovered.isSome()) {
+      break;
+    }
+  }
+
+  return master->applyResourceOperation(slave, operation)
+    .then([](Nothing) -> Response { return OK(); })
+    .repair([](const Future<Response>& result) {
+       return Conflict(result.failure());
+    });
 }
 
 

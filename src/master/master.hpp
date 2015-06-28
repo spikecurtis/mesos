@@ -959,11 +959,17 @@ protected:
       const FrameworkID& frameworkId,
       const ExecutorID& executorId);
 
+  void apply(Slave* slave, const Offer::Operation& operation);
+
   // Updates slave's resources by applying the given operation. It
   // also updates the allocator and sends a CheckpointResourcesMessage
   // to the slave with slave's current checkpointed resources.
   void applyOfferOperation(
       Framework* framework,
+      Slave* slave,
+      const Offer::Operation& operation);
+
+  process::Future<Nothing> applyResourceOperation(
       Slave* slave,
       const Offer::Operation& operation);
 
@@ -1053,6 +1059,10 @@ private:
 
     // /master/redirect
     process::Future<process::http::Response> redirect(
+        const process::http::Request& request) const;
+
+    // /master/reserve
+    process::Future<process::http::Response> reserve(
         const process::http::Request& request) const;
 
     // /master/roles.json

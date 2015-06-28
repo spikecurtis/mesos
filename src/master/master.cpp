@@ -746,6 +746,11 @@ void Master::initialize()
         [http](const process::http::Request& request) {
           return http.redirect(request);
         });
+  route("/reserve",
+        None(),  // TODO(mpark): Add an Http::RESERVE_HELP,
+        [http](const process::http::Request& request) {
+          return http.reserve(request);
+        });
   route("/roles.json",
         Http::ROLES_HELP,
         [http](const process::http::Request& request) {
@@ -5084,18 +5089,8 @@ void Master::removeExecutor(
 }
 
 
-void Master::applyOfferOperation(
-    Framework* framework,
-    Slave* slave,
-    const Offer::Operation& operation)
-{
-  CHECK_NOTNULL(framework);
+void Master::apply(Slave* slave, const Offer::Operation& operation) {
   CHECK_NOTNULL(slave);
-
-  allocator->updateAllocation(
-      framework->id(),
-      slave->id,
-      {operation});
 
   slave->apply(operation);
 
@@ -5107,6 +5102,31 @@ void Master::applyOfferOperation(
   message.mutable_resources()->CopyFrom(slave->checkpointedResources);
 
   send(slave->pid, message);
+}
+
+
+void Master::applyOfferOperation(
+    Framework* framework,
+    Slave* slave,
+    const Offer::Operation& operation)
+{
+  CHECK_NOTNULL(framework);
+  CHECK_NOTNULL(slave);
+
+  allocator->updateAllocation(framework->id(), slave->id, {operation});
+
+  apply(slave, operation);
+}
+
+
+Future<Nothing> Master::applyResourceOperation(
+    Slave* slave,
+    const Offer::Operation& operation)
+{
+  CHECK_NOTNULL(slave);
+
+  return allocator->updateAvailable(slave->id, {operation})
+    .onReady(defer(self(), &Master::apply, slave, operation));
 }
 
 
