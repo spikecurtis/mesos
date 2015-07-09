@@ -130,6 +130,7 @@ public:
       recoveryTimeout(_recoveryTimeout)
   {
     LOG(INFO) << "Version: " << MESOS_VERSION;
+    LOG(INFO) << "Slave UPID: " << stringify(slave);
 
     install<ExecutorRegisteredMessage>(
         &ExecutorProcess::registered,
@@ -183,6 +184,9 @@ protected:
             << " with pid " << getpid();
 
     link(slave);
+    LOG(INFO) << "Registering with slave at " << stringify(slave);
+    LOG(INFO) << "Our UPID: " << getpid();
+    LOG(INFO) << "Our address: " << __address__;
 
     // Register with slave.
     RegisterExecutorMessage message;
