@@ -873,6 +873,7 @@ void initialize(const string& delegate)
     PLOG(FATAL) << "Failed to initialize, setsockopt(SO_REUSEADDR)";
   }
 
+  LOG(INFO) << "Binding to " << stringify(__address__);
   Try<Address> bind = __s__->bind(__address__);
   if (bind.isError()) {
     PLOG(FATAL) << "Failed to initialize: " << bind.error();
