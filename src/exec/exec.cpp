@@ -186,7 +186,6 @@ protected:
     link(slave);
     LOG(INFO) << "Registering with slave at " << stringify(slave);
     LOG(INFO) << "Our UPID: " << getpid();
-    LOG(INFO) << "Our address: " << __address__;
 
     // Register with slave.
     RegisterExecutorMessage message;
