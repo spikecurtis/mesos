@@ -651,6 +651,7 @@ Status MesosExecutorDriver::start()
       EXIT(1) << "Expecting 'MESOS_SLAVE_PID' to be set in the environment.";
     }
 
+    VLOG(1) << "Got MESOS_SLAVE_PID '" << value.get() << "'";
     slave = UPID(value.get());
     CHECK(slave) << "Cannot parse MESOS_SLAVE_PID '" << value.get() << "'";
 
