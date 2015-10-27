@@ -576,12 +576,6 @@ Future<bool> MesosContainerizerProcess::launch(
     const PID<Slave>& slavePid,
     bool checkpoint)
 {
-  if (taskInfo.has_container()) {
-    // We return false as this containerizer does not support
-    // handling TaskInfo::ContainerInfo.
-    return false;
-  }
-
   return launch(
       containerId,
       executorInfo,
