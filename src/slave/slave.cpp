@@ -3246,8 +3246,7 @@ ExecutorInfo Slave::getExecutorInfo(
     executor.mutable_executor_id()->set_value(task.task_id().value());
     executor.mutable_framework_id()->CopyFrom(frameworkInfo.id());
 
-    if (task.has_container() &&
-        task.container().type() != ContainerInfo::MESOS) {
+    if (task.has_container()) {
       // Store the container info in the executor info so it will
       // be checkpointed. This allows the correct containerizer to
       // recover this task on restart.
